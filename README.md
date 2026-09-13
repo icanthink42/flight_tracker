@@ -1,5 +1,19 @@
 # RBG Matrix Flight Tracker
 
+## Flight data
+
+This fork uses two free, keyless services:
+
+* [ADSB.lol](https://www.adsb.lol/docs/open-data/api/) supplies live aircraft
+  positions and telemetry. Its public data is licensed under ODbL 1.0.
+* [ADSBDB](https://github.com/mrjackwills/adsbdb) supplies aircraft names,
+  airlines, and origin/destination airport codes. Lookups are cached for six
+  hours to avoid unnecessary requests.
+
+The display makes one ADSB.lol request every 15 seconds. No FlightRadar24
+account, paid plan, or API key is required. `ZONE_HOME`, `LOCATION_HOME`, and
+the altitude/speed filters in `config.py` control which aircraft appear.
+
 [Blog article about this project](https://blog.colinwaddell.com/flight-tracker/)
 
 [![Finished flight tracker showing a flight](https://blog.colinwaddell.com/media/flight-tracker/screen-flight-thumb.jpg)](https://blog.colinwaddell.com/media/flight-tracker/screen-flight.jpg)
@@ -11,7 +25,7 @@
 2. When complete, install the LED-matrix (rgbmatrix) python library, again as described in the [Adafruit installation guide](https://learn.adafruit.com/adafruit-rgb-matrix-bonnet-for-raspberry-pi/driving-matrices).
 3. It is assumed the [solder bridge is added to the HAT](https://learn.adafruit.com/assets/57727) in order to use the Pi's soundcard to drive the device's PWM
 4. Clone this repository (`git clone https://github.com/ColinWaddell/its-a-plane-python`). 
-5. Install the FlightRadarAPI dependency (`sudo pip3 install FlightRadarAPI`). Note - running with `sudo` is required as `rgbmatrix` [must be run as as root](https://github.com/hzeller/rpi-rgb-led-matrix/tree/master/bindings/python#using-the-library) for best performance.
+5. Install Requests (`sudo pip3 install requests`). Note - running with `sudo` is required as `rgbmatrix` [must be run as as root](https://github.com/hzeller/rpi-rgb-led-matrix/tree/master/bindings/python#using-the-library) for best performance.
 6. Go to the its-a-plane-python repo folder `cd its-a-plane-python` (or wherever you cloned it to). 
 7. Add a config.py file as described below. 
 8. Run `sudo python3 its-a-plane.py`.

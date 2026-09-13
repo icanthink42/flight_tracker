@@ -1,0 +1,251 @@
+from FlightRadar24.api import FlightRadar24API
+from threading import Thread, Lock
+from time import sleep
+import math
+import logging
+
+from requests.exceptions import ConnectionError
+from urllib3.exceptions import NewConnectionError
+from urllib3.exceptions import MaxRetryError
+
+# Configure logging to output to a file
+logging.basicConfig(
+    filename="/home/pi/overhead_log.txt",
+    level=logging.INFO,
+    format="%(asctime)s - %(message)s"
+)
+
+# Load MIN_ALTITUDE and MAX_ALTITUDE from config.py
+try:
+    from config import MIN_ALTITUDE, MAX_ALTITUDE
+    logging.info(f"Loaded from config: MIN_ALTITUDE = {MIN_ALTITUDE}, MAX_ALTITUDE = {MAX_ALTITUDE}")
+except (ModuleNotFoundError, NameError, ImportError):
+    # Fallback if the values are not in config.py
+    MIN_ALTITUDE = 950  # feet
+    MAX_ALTITUDE = 10000  # feet
+    logging.info(f"Using fallback: MIN_ALTITUDE = {MIN_ALTITUDE}, MAX_ALTITUDE = {MAX_ALTITUDE}")
+
+
+RETRIES = 3
+RATE_LIMIT_DELAY = 1
+MAX_FLIGHT_LOOKUP = 5
+#MAX_ALTITUDE = 10000  # feet
+EARTH_RADIUS_KM = 6371
+BLANK_FIELDS = ["", "N/A", "NONE"]
+
+try:
+    # Attempt to load config data
+    from config import ZONE_HOME, LOCATION_HOME
+
+    ZONE_DEFAULT = ZONE_HOME
+    LOCATION_DEFAULT = LOCATION_HOME
+
+except (ModuleNotFoundError, NameError, ImportError):
+    # If there's no config data
+    ZONE_DEFAULT = {"tl_y": 42.029, "tl_x": -87.888, "br_y": 41.99, "br_x": -87.8}
+    LOCATION_DEFAULT = [42.0016, -87.8283, EARTH_RADIUS_KM]
+
+# Optional ground-speed filter (raw units, confirmed as knots)
+try:
+    from config import MIN_GROUNDSPEED, MAX_GROUNDSPEED  # e.g. 120 / 560 (None disables)
+except Exception:
+    MIN_GROUNDSPEED = None
+    MAX_GROUNDSPEED = None
+
+
+def distance_from_flight_to_home(flight, home=LOCATION_DEFAULT):
+    def polar_to_cartesian(lat, long, alt):
+        DEG2RAD = math.pi / 180
+        return [
+            alt * math.cos(DEG2RAD * lat) * math.sin(DEG2RAD * long),
+            alt * math.sin(DEG2RAD * lat),
+            alt * math.cos(DEG2RAD * lat) * math.cos(DEG2RAD * long),
+        ]
+
+    def feet_to_meters_plus_earth(altitude_ft):
+        altitude_km = 0.0003048 * altitude_ft
+        return altitude_km + EARTH_RADIUS_KM
+
+    try:
+        (x0, y0, z0) = polar_to_cartesian(
+            flight.latitude,
+            flight.longitude,
+            feet_to_meters_plus_earth(flight.altitude),
+        )
+
+        (x1, y1, z1) = polar_to_cartesian(*home)
+
+        dist = math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2 + (z1 - z0) ** 2)
+
+        return dist
+
+    except AttributeError:
+        # on error say it's far away
+        return 1e6
+
+
+class Overhead:
+    def __init__(self):
+        self._api = FlightRadar24API()
+        self._lock = Lock()
+        self._data = []
+        self._new_data = False
+        self._processing = False
+
+    def grab_data(self):
+        Thread(target=self._grab_data, daemon=True).start()
+
+
+    def _grab_data(self):
+        # Mark data as old
+        with self._lock:
+            self._new_data = False
+            self._processing = True
+
+        data = []
+
+        # Grab flight details
+        try:
+            bounds = self._api.get_bounds(ZONE_DEFAULT)
+            flights = self._api.get_flights(bounds=bounds)
+
+            # Sort flights by closest first
+            def _speed_ok_raw(f):
+                """
+                Use ground_speed as-is (API returns knots).
+                If MIN/MAX_GROUNDSPEED are None, the check is disabled.
+                """
+                try:
+                    v = getattr(f, "ground_speed", None)
+                    if v is None:
+                        return True  # keep if unknown; change to False to be strict
+                    if MIN_GROUNDSPEED is not None and v < MIN_GROUNDSPEED:
+                        return False
+                    if MAX_GROUNDSPEED is not None and v > MAX_GROUNDSPEED:
+                        return False
+                    return True
+                except Exception:
+                    return True
+
+            # Altitude + optional speed filter, then nearest-first
+            flights = [
+                f for f in flights
+                if (getattr(f, "altitude", 0) > MIN_ALTITUDE and getattr(f, "altitude", 0) < MAX_ALTITUDE) and _speed_ok_raw(f)
+            ]
+            flights = sorted(flights, key=lambda f: distance_from_flight_to_home(f))
+
+
+            for flight in flights[:MAX_FLIGHT_LOOKUP]:
+                retries = RETRIES
+
+                while retries:
+                    # Rate limit protection
+                    sleep(RATE_LIMIT_DELAY)
+
+                    # Grab and store details
+                    try:
+                        details = self._api.get_flight_details(flight)
+
+                        # Get plane type
+                        try:
+                            plane = details["aircraft"]["model"]["text"]
+                        except (KeyError, TypeError):
+                            plane = ""
+
+                        # Tidy up what we pass along
+                        plane = plane if not (plane.upper() in BLANK_FIELDS) else ""
+
+                        origin = (
+                            flight.origin_airport_iata
+                            if not (flight.origin_airport_iata.upper() in BLANK_FIELDS)
+                            else ""
+                        )
+
+                        destination = (
+                            flight.destination_airport_iata
+                            if not (flight.destination_airport_iata.upper() in BLANK_FIELDS)
+                            else ""
+                        )
+
+                        callsign = (
+                            flight.callsign
+                            if not (flight.callsign.upper() in BLANK_FIELDS)
+                            else ""
+                        )
+
+                            # NEW: Airline name from details
+                        try:
+                            airline = details["airline"]["name"]
+                        except (KeyError, TypeError):
+                            airline = ""
+                        airline = airline if not (str(airline).upper() in BLANK_FIELDS) else ""
+
+                        # NEW: Squawk from flight
+                        squawk = (
+                            flight.squawk
+                            if not (str(flight.squawk).upper() in BLANK_FIELDS)
+                            else ""
+                        )
+                        ground_speed = flight.ground_speed  # Assume the API provides ground speed directly
+                        heading = getattr(flight, "heading", None)  # degrees 0–359 (None if unavailable)
+
+                        data.append(
+                            {
+                                "plane": plane,
+                                "origin": origin,
+                                "destination": destination,
+                                "vertical_speed": flight.vertical_speed,
+                                "altitude": flight.altitude,
+                                "heading": getattr(flight, "heading", None),  # deg
+                                "callsign": callsign,
+                                "ground_speed": ground_speed,
+                                "airline": airline,      # <-- NEW
+                                "squawk": squawk,        # <-- NEW
+                            }
+                        )
+
+                        break  # success for this flight
+
+                    except (KeyError, AttributeError):
+                        retries -= 1
+
+            with self._lock:
+                self._new_data = True
+                self._processing = False
+                self._data = data
+
+        except (ConnectionError, NewConnectionError, MaxRetryError):
+            self._new_data = False
+            self._processing = False
+
+    @property
+    def new_data(self):
+        with self._lock:
+            return self._new_data
+
+    @property
+    def processing(self):
+        with self._lock:
+            return self._processing
+
+    @property
+    def data(self):
+        with self._lock:
+            self._new_data = False
+            return self._data
+
+    @property
+    def data_is_empty(self):
+        return len(self._data) == 0
+
+
+# Main function
+if __name__ == "__main__":
+
+    o = Overhead()
+    o.grab_data()
+    while not o.new_data:
+        print("processing...")
+        sleep(1)
+
+    print(o.data)

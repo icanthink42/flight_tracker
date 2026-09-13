@@ -1,455 +1,472 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flight Tracker Settings Pro</title>
-    <style>
-        html { scroll-behavior: smooth; }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-        }
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plane Spotter Control Panel</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #081018;
+      --panel: #101c27;
+      --panel-raised: #152534;
+      --line: #294052;
+      --text: #edf7ff;
+      --muted: #9eb1bf;
+      --cyan: #42d9ff;
+      --green: #53e69d;
+      --orange: #ffb454;
+      --red: #ff6b6b;
+    }
 
-        h1 {
-            text-align: center;
-            color: #0056b3;
-            margin-bottom: 20px;
-        }
-        /* make only the "Pro" part red */
-        .pro {
-            color: #d10000;  /* bright red accent */
-        }
-        .form-container {
-            background-color: white;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-            max-width: 600px;
-            margin: 0 auto;
-        }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(66, 217, 255, .10), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .page { width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 60px; }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+    h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 3rem); letter-spacing: -.04em; }
+    h1 span { color: var(--cyan); }
+    h2 { margin: 0 0 6px; font-size: 1.18rem; }
+    p { margin: 0; }
+    .subtitle, .hint { color: var(--muted); }
+    .status {
+      flex: none;
+      padding: 7px 11px;
+      border: 1px solid rgba(83, 230, 157, .35);
+      border-radius: 999px;
+      background: rgba(83, 230, 157, .08);
+      color: var(--green);
+      font-weight: 700;
+    }
+    nav { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 20px; }
+    nav a {
+      flex: none;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 12px;
+      text-decoration: none;
+    }
+    nav a:hover { color: var(--text); border-color: var(--cyan); }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card {
+      min-width: 0;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(145deg, var(--panel-raised), var(--panel));
+      box-shadow: 0 18px 50px rgba(0, 0, 0, .18);
+    }
+    .wide { grid-column: 1 / -1; }
+    .card-head { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+    .eyebrow { color: var(--cyan); font-size: .74rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .notice {
+      margin: 0 0 14px;
+      padding: 10px 12px;
+      border: 1px solid rgba(83, 230, 157, .35);
+      border-radius: 10px;
+      background: rgba(83, 230, 157, .08);
+      color: var(--green);
+    }
+    .warning {
+      display: none;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 180, 84, .4);
+      border-radius: 10px;
+      background: rgba(255, 180, 84, .09);
+      color: var(--orange);
+    }
+    #tracking-map {
+      height: min(58vh, 570px);
+      min-height: 380px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background-color: #17242c;
+      background-image:
+        linear-gradient(rgba(66, 217, 255, .06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(66, 217, 255, .06) 1px, transparent 1px);
+      background-size: 32px 32px;
+      overflow: hidden;
+    }
+    .map-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    button, .button {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      padding: 10px 14px;
+      background: var(--cyan);
+      color: #03141b;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.secondary { background: transparent; color: var(--text); border-color: var(--line); }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: .88rem; }
+    .dot { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; }
+    .dot.home { background: var(--cyan); }
+    .dot.corner { background: var(--red); }
+    form { display: grid; gap: 13px; }
+    .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+    .field { min-width: 0; }
+    label { display: block; margin-bottom: 5px; color: var(--muted); font-size: .84rem; font-weight: 700; }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: #09131c;
+      color: var(--text);
+      font: inherit;
+    }
+    input:focus, select:focus { outline: 2px solid rgba(66, 217, 255, .45); border-color: var(--cyan); }
+    input[type="range"] { width: 100%; accent-color: var(--cyan); }
+    .range-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
+    output { min-width: 60px; color: var(--cyan); font-variant-numeric: tabular-nums; text-align: right; }
+    .checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: .9rem;
+    }
+    .check input { accent-color: var(--cyan); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .footer-note { margin-top: 16px; color: var(--muted); font-size: .8rem; text-align: center; }
 
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+    .leaflet-container { font-family: inherit; }
+    .leaflet-bar a { background: #10202c; color: var(--text); border-color: var(--line); }
+    .leaflet-bar a:hover { background: #173447; color: white; }
+    .leaflet-control-attribution { background: rgba(8, 16, 24, .82) !important; color: var(--muted); }
+    .leaflet-control-attribution a { color: var(--cyan); }
+    .home-pin, .corner-pin {
+      display: grid;
+      place-items: center;
+      border: 3px solid white;
+      border-radius: 50% 50% 50% 0;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, .5);
+      transform: rotate(-45deg);
+    }
+    .home-pin { width: 26px; height: 26px; background: var(--cyan); }
+    .corner-pin { width: 22px; height: 22px; background: var(--red); border-radius: 5px; }
+    .corner-pin b { color: white; font-size: 8px; transform: rotate(45deg); }
 
-        label {
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="range"],
-        textarea {
-            padding: 10px;
-            font-size: 1rem;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            width: 100%;
-        }
-
-        input[type="range"] {
-            width: 100%;
-        }
-
-        button {
-            background-color: #0056b3;
-            color: white;
-            padding: 10px 15px;
-            font-size: 1rem;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-
-        button:hover {
-            background-color: #003d80;
-        }
-
-        .section-title {
-            font-size: 1.2rem;
-            color: #0056b3;
-            margin-bottom: 10px;
-            border-bottom: 2px solid #ccc;
-            padding-bottom: 5px;
-        }
-
-        .slider-value {
-            font-weight: bold;
-            color: #333;
-            margin-top: -10px;
-            margin-bottom: 20px;
-        }
-
-        /* Added padding for form containers */
-        .form-container {
-            margin-bottom: 30px;
-        }
-
-        /* Pro tip text */
-        .pro-tip {
-            font-size: 0.9rem;
-            color: #007b00;
-            margin-bottom: 15px;
-        }
-
-        .pro-tip a {
-            color: #007b00;
-            text-decoration: none;
-        }
-
-        .pro-tip a:hover {
-            text-decoration: underline;
-        }
-
-        /* links below the title */
-        .section-links {
-            text-align: center;
-            margin-bottom: 25px;
-        }
-
-        .section-links a {
-            display: inline-block;
-            background-color: #0056b3;
-            color: #fff;
-            text-decoration: none;
-            font-size: 0.9rem;
-            font-weight: bold;
-            padding: 6px 14px;
-            border-radius: 20px;
-            margin: 4px;
-            transition: all 0.3s ease;
-        }
-
-        .section-links a:hover {
-            background-color: #d10000;
-            transform: translateY(-2px);
-        }
-    </style>
+    @media (max-width: 760px) {
+      .page { width: min(100% - 18px, 1180px); padding-top: 18px; }
+      header { align-items: start; flex-direction: column; }
+      .grid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
+      .fields, .checks, .split { grid-template-columns: 1fr; }
+      #tracking-map { min-height: 330px; }
+    }
+  </style>
 </head>
 <body>
-    <h1>Flight Tracker Settings <span class="pro">Pro</span></h1>
-
-    <div class="section-links">
-    <a href="#brightness">Brightness</a>
-    <a href="#altitude">Altitude</a>
-    <a href="#groundspeed">Ground Speed</a>
-    <a href="#weather">Weather</a>
-    <a href="#timezone">Timezone</a>
-    <a href="#plane-details">Plane Details</a>
-    <a href="#temp-units">Temperature</a>
-    <a href="#airport-code">Airport Code</a>
+<div class="page">
+  <header>
+    <div>
+      <div class="eyebrow">64 × 32 RGB matrix</div>
+      <h1>Plane Spotter <span>Control</span></h1>
+      <p class="subtitle">Configure the tracker without leaving this page.</p>
     </div>
+    <div class="status">● Display online</div>
+  </header>
 
-    <!-- Form for entering home coordinates -->
-    <div class="form-container">
-        <h2 class="section-title">Enter Home Coordinates</h2>
-        <p class="pro-tip">Pro tip: Use <a href="https://geojson.io/" target="_blank">this website</a>, drop a pin on your location, and get the coordinates manually for precise flight tracking.</p>
-        <form method="POST">
-            <label for="latitude">Latitude:</label>
-            <input type="number" step="any" id="latitude" name="latitude" value="{{ current_location[0] }}">
+  <nav aria-label="Settings sections">
+    <a href="#map">Map &amp; area</a>
+    <a href="#filters">Flight filters</a>
+    <a href="#display">Display</a>
+    <a href="#details">Plane details</a>
+    <a href="#time-weather">Time &amp; weather</a>
+  </nav>
 
-            <label for="longitude">Longitude:</label>
-            <input type="number" step="any" id="longitude" name="longitude" value="{{ current_location[1] }}">
-
-            <label for="altitude">Altitude (feet):</label>
-            <input type="number" step="any" id="altitude" name="altitude" value="{{ (current_location[2] / 0.0003048) | round(2) }}">
-            <button type="submit">Set Home Coordinates</button>
-        </form>
-    </div>
-
-    <!-- Timezone Selection -->
-    <div class="form-container">
-        <h2 class="section-title">Select Timezone</h2>
-        <form method="POST">
-            <label for="timezone">Timezone:</label>
-            <select id="timezone" name="timezone">
-                {% for tz in timezones %}
-                <option value="{{ tz }}" {% if tz == current_timezone %}selected{% endif %}>{{ tz }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit">Set Timezone</button>
-        </form>
-    </div>
-
-        <!-- Time Format -->
-    <div id="timezone" class="form-container">
-        <h2 class="section-title">Time Format</h2>
-        <form method="POST">
-            <label for="time_format_24h">Choose format:</label>
-            <select id="time_format_24h" name="time_format_24h">
-                <option value="true"  {% if time_format_24h %}selected{% endif %}>24-hour (e.g., 16:45)</option>
-                <option value="false" {% if not time_format_24h %}selected{% endif %}>12-hour (e.g., 4:45 PM)</option>
-            </select>
-            <button type="submit">Set Time Format</button>
-        </form>
-        <p class="pro-tip">Default is 12-hour; switch to 24-hour if you prefer.</p>
-    </div>
-
-
-    <!-- Boundary Box: Enter the top-left and bottom-right coordinates -->
-    <!-- Boundary Box: Enter the top-left and bottom-right coordinates -->
-    <div class="form-container">
-        <h2 class="section-title">Boundary Box</h2>
-        <p class="pro-tip">Pro tip: Use <a href="https://geojson.io/" target="_blank">this website</a>, go to your location, and click "Draw Rectangular Polygon" to get the boundary box coordinates. Make sure to copy the entire GeoJSON string, including the curly braces, and remove any extra pins or overlapping elements.</p>
-        
-        <!-- GeoJSON input and Extract Coordinates button -->
-        <form id="geojson-form">
-            <label for="geojson">Paste GeoJSON here:</label>
-            <textarea id="geojson" name="geojson" rows="10" placeholder='Paste your GeoJSON here'></textarea>
-            <button type="button" onclick="processGeoJSON()">Extract Coordinates</button>
-            <p style="font-size: 0.9rem; color: #ff6600;">Note: Extracting coordinates only updates the fields below. You must click "Set Boundary Box" to apply the changes to the tracker.</p>
-        </form>
-
-        <!-- Form to submit the extracted coordinates -->
-        <form method="POST">
-            <label for="tl_y">Top-Left Latitude:</label>
-            <input type="number" step="any" id="tl_y" name="tl_y" value="{{ zone_home['tl_y'] }}">
-
-            <label for="tl_x">Top-Left Longitude:</label>
-            <input type="number" step="any" id="tl_x" name="tl_x" value="{{ zone_home['tl_x'] }}">
-
-            <label for="br_y">Bottom-Right Latitude:</label>
-            <input type="number" step="any" id="br_y" name="br_y" value="{{ zone_home['br_y'] }}">
-
-            <label for="br_x">Bottom-Right Longitude:</label>
-            <input type="number" step="any" id="br_x" name="br_x" value="{{ zone_home['br_x'] }}">
-            <button type="submit">Set Boundary Box</button>
-        </form>
-    </div>
-
-    <!-- Min and Max Ceiling Configuration -->
-    <div id="altitude" class="form-container">
-        <h2 class="section-title">Configure Min and Max Ceiling (Altitude)</h2>
-        <p>Use this section to set the minimum and maximum ceiling for tracking flights. The values are in feet.</p>
-
-        <!-- Form for setting Min and Max Ceiling -->
-        <form method="POST">
-            <label for="min_altitude">Minimum Altitude (feet):</label>
-            <input type="number" step="any" id="min_altitude" name="min_altitude" value="{{ min_altitude }}">
-
-            <label for="max_altitude">Maximum Altitude (feet):</label>
-            <input type="number" step="any" id="max_altitude" name="max_altitude" value="{{ max_altitude }}">
-            
-            <button type="submit">Set Min and Max Ceiling</button>
-        </form>
-    </div>
-
-        <!-- Ground Speed Filter (kts) -->
-    <div id="groundspeed" class="form-container">
-    <h2 class="section-title">Ground Speed Filter (kts)</h2>
-    <p class="pro-tip">Uses raw API units (knots). Check “None” to disable a bound.</p>
-
-    <form method="POST">
-        <!-- MIN -->
-        <label for="min_groundspeed">Minimum Ground Speed</label>
-        <input
-        type="range"
-        id="min_groundspeed"
-        name="min_groundspeed"
-        min="0"
-        max="800"
-        step="1"
-        value="{{ min_groundspeed if min_groundspeed is not none else 0 }}"
-        {% if min_groundspeed is none %}disabled{% endif %}
-        oninput="document.getElementById('min_gs_val').innerText=this.value"
-        >
-        <div class="slider-value">
-        Min: <span id="min_gs_val">{{ min_groundspeed if min_groundspeed is not none else 'None' }}</span>
+  <main class="grid">
+    <section class="card wide" id="map">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Tracking geography</div>
+          <h2>Home and aircraft search area</h2>
+          <p class="hint">Click the map to move home. Drag the blue pin or either red corner to fine-tune the area.</p>
         </div>
-        <label>
-        <input type="checkbox" id="min_gs_none" name="min_gs_none"
-            {% if min_groundspeed is none %}checked{% endif %}
-            onchange="toggleMinGS(this.checked)">
-        None (no minimum)
-        </label>
+      </div>
 
-        <hr>
+      {% if map_saved %}<div class="notice">Map settings saved and the display was restarted.</div>{% endif %}
+      <div class="warning" id="home-warning">The stored home point was outside the search area. It has been placed at the area center; save to correct it.</div>
+      <div class="warning" id="tile-warning">The background map could not load. The pin, search rectangle, and coordinate controls still work.</div>
+      <div id="tracking-map" aria-label="Interactive tracking area map"></div>
 
-        <!-- MAX -->
-        <label for="max_groundspeed">Maximum Ground Speed</label>
-        <input
-        type="range"
-        id="max_groundspeed"
-        name="max_groundspeed"
-        min="0"
-        max="800"
-        step="1"
-        value="{{ max_groundspeed if max_groundspeed is not none else 800 }}"
-        {% if max_groundspeed is none %}disabled{% endif %}
-        oninput="document.getElementById('max_gs_val').innerText=this.value"
-        >
-        <div class="slider-value">
-        Max: <span id="max_gs_val">{{ max_groundspeed if max_groundspeed is not none else 'None' }}</span>
+      <div class="map-tools">
+        <button type="button" class="secondary" id="fit-area">Fit search area</button>
+        <button type="button" class="secondary" data-radius="5">5 nm box</button>
+        <button type="button" class="secondary" data-radius="10">10 nm box</button>
+        <button type="button" class="secondary" data-radius="25">25 nm box</button>
+      </div>
+      <div class="legend">
+        <span><i class="dot home"></i>Home / nearest-first point</span>
+        <span><i class="dot corner"></i>Search-area corners</span>
+        <span id="area-size"></span>
+      </div>
+
+      <form method="post" id="map-settings-form">
+        <input type="hidden" name="map_settings_form" value="1">
+        <div class="fields">
+          <div class="field">
+            <label for="latitude">Home latitude</label>
+            <input type="number" step="any" min="-90" max="90" id="latitude" name="latitude" value="{{ current_location[0] }}" required>
+          </div>
+          <div class="field">
+            <label for="longitude">Home longitude</label>
+            <input type="number" step="any" min="-180" max="180" id="longitude" name="longitude" value="{{ current_location[1] }}" required>
+          </div>
+          <div class="field">
+            <label for="altitude">Home elevation (feet)</label>
+            <input type="number" step="any" id="altitude" name="altitude" value="{{ (current_location[2] / 0.0003048) | round(2) }}" required>
+          </div>
+          <div class="field">
+            <label>Search-area size</label>
+            <input type="text" id="area-size-field" value="Calculated from map" disabled>
+          </div>
+          <div class="field">
+            <label for="tl_y">North latitude</label>
+            <input type="number" step="any" min="-90" max="90" id="tl_y" name="tl_y" value="{{ zone_home['tl_y'] }}" required>
+          </div>
+          <div class="field">
+            <label for="tl_x">West longitude</label>
+            <input type="number" step="any" min="-180" max="180" id="tl_x" name="tl_x" value="{{ zone_home['tl_x'] }}" required>
+          </div>
+          <div class="field">
+            <label for="br_y">South latitude</label>
+            <input type="number" step="any" min="-90" max="90" id="br_y" name="br_y" value="{{ zone_home['br_y'] }}" required>
+          </div>
+          <div class="field">
+            <label for="br_x">East longitude</label>
+            <input type="number" step="any" min="-180" max="180" id="br_x" name="br_x" value="{{ zone_home['br_x'] }}" required>
+          </div>
         </div>
-        <label>
-        <input type="checkbox" id="max_gs_none" name="max_gs_none"
-            {% if max_groundspeed is none %}checked{% endif %}
-            onchange="toggleMaxGS(this.checked)">
-        None (no maximum)
-        </label>
-
-        <button type="submit">Set Ground Speed Filter</button>
-    </form>
-    </div>
-
-
-    <!-- Brightness slider -->
-    <div id="brightness" class="form-container">
-
-        <h2 class="section-title">Adjust Brightness</h2>
-        <form method="POST">
-            <label for="brightness">Brightness:</label>
-            <input type="range" id="brightness" name="brightness" min="0" max="100" value="{{ brightness }}">
-            <p class="slider-value">Current Brightness: {{ brightness }}</p>
-            <button type="submit">Set Brightness</button>
-        </form>
-    </div>
-
-
-    
-    <!-- Weather Location -->
-    <div id="weather" class="form-container">
-        <h2 class="section-title">Weather Location</h2>
-        <p style="font-size: 0.9rem;">Detected Weather Location: <strong>{{ weather_location }}</strong></p>
-        <form method="POST">
-            <label for="weather_location">Enter Weather Location (City Name):</label>
-            <input type="text" id="weather_location" name="weather_location" value="{{ weather_location }}">
-            <button type="submit">Set Weather Location</button>
-        </form>
-        <!-- Additional note in "pro tip" style -->
-        <p class="pro-tip" style="color: #007b00;">If weather is displaying incorrectly, try the nearest "Big" city.</p>
-    </div>
-
-
-        <!-- Plane Details (LED) -->
-    <div id="plane-details" class="form-container">
-      <h2 class="section-title">Plane Details</h2>
-      <form method="POST">
-        <!-- marker so app.py knows which form posted -->
-        <input type="hidden" name="plane_fields_form" value="1">
-
-        <label><input type="checkbox" name="plane_fields" value="plane"
-          {% if 'plane' in selected_plane_fields %}checked{% endif %}> Plane model/name</label>
-
-        <label><input type="checkbox" name="plane_fields" value="route"
-          {% if 'route' in selected_plane_fields %}checked{% endif %}> Route (Origin→Destination)</label>
-
-        <label><input type="checkbox" name="plane_fields" value="callsign"
-          {% if 'callsign' in selected_plane_fields %}checked{% endif %}> Callsign</label>
-
-        <label><input type="checkbox" name="plane_fields" value="airline"
-          {% if 'airline' in selected_plane_fields %}checked{% endif %}> Airline name</label>
-
-        <label><input type="checkbox" name="plane_fields" value="altitude"
-          {% if 'altitude' in selected_plane_fields %}checked{% endif %}> Altitude (ft)</label>
-
-        <label><input type="checkbox" name="plane_fields" value="ground_speed"
-          {% if 'ground_speed' in selected_plane_fields %}checked{% endif %}> Ground speed (kts)</label>
-
-        <label><input type="checkbox" name="plane_fields" value="heading"
-          {% if 'heading' in selected_plane_fields %}checked{% endif %}> Heading (°)</label>
-
-        <label><input type="checkbox" name="plane_fields" value="vertical_speed"
-          {% if 'vertical_speed' in selected_plane_fields %}checked{% endif %}> Vertical speed (fpm)</label>
-
-        <!-- <label><input type="checkbox" name="plane_fields" value="squawk"
-          {% if 'squawk' in selected_plane_fields %}checked{% endif %}> Squawk</label> -->
-
-        <button type="submit">Save Plane Details</button>
+        <button type="submit">Save home and search area</button>
       </form>
-      <p class="pro-tip">Changes appear on the LED within ~1s (no restart needed).</p>
-    </div>
+    </section>
 
+    <section class="card" id="filters">
+      <div class="eyebrow">Aircraft selection</div>
+      <h2>Altitude</h2>
+      <p class="hint">Only show aircraft inside this altitude range.</p>
+      <form method="post">
+        <div class="split">
+          <div class="field"><label for="min_altitude">Minimum (feet)</label><input type="number" id="min_altitude" name="min_altitude" value="{{ min_altitude }}" required></div>
+          <div class="field"><label for="max_altitude">Maximum (feet)</label><input type="number" id="max_altitude" name="max_altitude" value="{{ max_altitude }}" required></div>
+        </div>
+        <button type="submit">Save altitude filter</button>
+      </form>
+    </section>
 
-    <!-- 🔥 NEW: Temperature Units -->
-    <div id="temp-units" class="form-container">
-        <h2 class="section-title">Temperature Units</h2>
-        <form method="POST">
-            <label for="temperature_units">Choose units:</label>
-            <select id="temperature_units" name="temperature_units">
-                <option value="imperial" {% if temperature_units == "imperial" %}selected{% endif %}>Imperial (°F)</option>
-                <option value="metric" {% if temperature_units == "metric" %}selected{% endif %}>Metric (°C)</option>
-            </select>
-            <button type="submit">Set Temperature Units</button>
-        </form>
-        <p class="pro-tip">Tip: Imperial shows °F. Metric shows °C.</p>
-    </div>
-    
+    <section class="card">
+      <div class="eyebrow">Aircraft selection</div>
+      <h2>Ground speed</h2>
+      <p class="hint">Useful for excluding aircraft on the ground.</p>
+      <form method="post">
+        <div class="range-row">
+          <input type="range" id="min_groundspeed" name="min_groundspeed" min="0" max="800" value="{{ min_groundspeed if min_groundspeed is not none else 0 }}" {% if min_groundspeed is none %}disabled{% endif %}>
+          <output id="min_gs_val">{{ min_groundspeed if min_groundspeed is not none else 'None' }}</output>
+        </div>
+        <label class="check"><input type="checkbox" id="min_gs_none" name="min_gs_none" {% if min_groundspeed is none %}checked{% endif %}> No minimum speed</label>
+        <div class="range-row">
+          <input type="range" id="max_groundspeed" name="max_groundspeed" min="0" max="800" value="{{ max_groundspeed if max_groundspeed is not none else 800 }}" {% if max_groundspeed is none %}disabled{% endif %}>
+          <output id="max_gs_val">{{ max_groundspeed if max_groundspeed is not none else 'None' }}</output>
+        </div>
+        <label class="check"><input type="checkbox" id="max_gs_none" name="max_gs_none" {% if max_groundspeed is none %}checked{% endif %}> No maximum speed</label>
+        <button type="submit">Save speed filter</button>
+      </form>
+    </section>
 
+    <section class="card" id="display">
+      <div class="eyebrow">LED panel</div>
+      <h2>Brightness</h2>
+      <form method="post">
+        <div class="range-row">
+          <input type="range" id="brightness" name="brightness" min="1" max="100" value="{{ brightness }}">
+          <output id="brightness-value">{{ brightness }}%</output>
+        </div>
+        <button type="submit">Set brightness</button>
+      </form>
+    </section>
 
+    <section class="card" id="details">
+      <div class="eyebrow">LED panel</div>
+      <h2>Scrolling plane details</h2>
+      <p class="hint">Choose what appears on the bottom line.</p>
+      <form method="post">
+        <input type="hidden" name="plane_fields_form" value="1">
+        <div class="checks">
+          {% for key, label in [
+            ('plane', 'Plane model'), ('route', 'Route'), ('callsign', 'Callsign'),
+            ('airline', 'Airline'), ('altitude', 'Altitude'), ('ground_speed', 'Ground speed'),
+            ('heading', 'Heading'), ('vertical_speed', 'Vertical speed'), ('squawk', 'Squawk')
+          ] %}
+          <label class="check"><input type="checkbox" name="plane_fields" value="{{ key }}" {% if key in selected_plane_fields %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </div>
+        <button type="submit">Save detail fields</button>
+      </form>
+    </section>
 
-<!-- Bold Airport Code Input -->
-<div id="airport-code" class="form-container">
-    <h2 class="section-title">Bold Airport Code</h2>
-    <p>This will bold the airport code on your display for all flights to and from the ICAO code.</p>
+    <section class="card" id="time-weather">
+      <div class="eyebrow">Clock</div>
+      <h2>Time</h2>
+      <form method="post">
+        <div class="field"><label for="timezone">Time zone</label><select id="timezone" name="timezone">{% for tz in timezones %}<option value="{{ tz }}" {% if tz == current_timezone %}selected{% endif %}>{{ tz }}</option>{% endfor %}</select></div>
+        <button type="submit">Set time zone</button>
+      </form>
+      <form method="post" style="margin-top: 13px">
+        <div class="field"><label for="time_format_24h">Clock format</label><select id="time_format_24h" name="time_format_24h"><option value="false" {% if not time_format_24h %}selected{% endif %}>12-hour</option><option value="true" {% if time_format_24h %}selected{% endif %}>24-hour</option></select></div>
+        <button type="submit">Set clock format</button>
+      </form>
+    </section>
 
-    <!-- Form for setting the airport code -->
-    <form method="POST">
-        <input type="text" id="journey_code" name="journey_code" value="{{ journey_code }}">
-        <button type="submit">Set Airport Code</button>
-    </form>
+    <section class="card">
+      <div class="eyebrow">Conditions</div>
+      <h2>Weather</h2>
+      <form method="post">
+        <div class="field"><label for="weather_location">City</label><input type="text" id="weather_location" name="weather_location" value="{{ weather_location }}" required></div>
+        <button type="submit">Set weather city</button>
+      </form>
+      <form method="post" style="margin-top: 13px">
+        <div class="field"><label for="temperature_units">Temperature</label><select id="temperature_units" name="temperature_units"><option value="imperial" {% if temperature_units == 'imperial' %}selected{% endif %}>Fahrenheit</option><option value="metric" {% if temperature_units == 'metric' %}selected{% endif %}>Celsius</option></select></div>
+        <button type="submit">Set units</button>
+      </form>
+    </section>
+
+    <section class="card wide">
+      <div class="eyebrow">Route emphasis</div>
+      <h2>Highlighted airport</h2>
+      <p class="hint">This three-letter IATA airport code is shown in bold.</p>
+      <form method="post">
+        <div class="field"><label for="journey_code">Airport code</label><input type="text" maxlength="3" id="journey_code" name="journey_code" value="{{ journey_code }}" required></div>
+        <button type="submit">Save airport code</button>
+      </form>
+    </section>
+  </main>
+
+  <p class="footer-note">Map data © OpenStreetMap contributors. Leaflet is served locally by this Raspberry Pi.</p>
 </div>
 
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script>
+  const storedHome = [{{ current_location[0] | tojson }}, {{ current_location[1] | tojson }}];
+  const storedZone = {{ zone_home | tojson }};
+  const north = Math.max(Number(storedZone.tl_y), Number(storedZone.br_y));
+  const south = Math.min(Number(storedZone.tl_y), Number(storedZone.br_y));
+  const west = Math.min(Number(storedZone.tl_x), Number(storedZone.br_x));
+  const east = Math.max(Number(storedZone.tl_x), Number(storedZone.br_x));
+  let searchBounds = L.latLngBounds([south, west], [north, east]);
+  let home = L.latLng(Number(storedHome[0]), Number(storedHome[1]));
 
-    <!-- JavaScript to process GeoJSON -->
-    <!-- JavaScript to process GeoJSON -->
-    <script>
-        function processGeoJSON() {
-            try {
-                const geojsonText = document.getElementById('geojson').value;
-                const geojson = JSON.parse(geojsonText);
+  if (!searchBounds.pad(0.25).contains(home)) {
+    home = searchBounds.getCenter();
+    document.getElementById('home-warning').style.display = 'block';
+    setInput('latitude', home.lat);
+    setInput('longitude', home.lng);
+  }
 
-                // Check for the rectangle in the GeoJSON and extract only the coordinates for the rectangle
-                const geometry = geojson.features[0].geometry;
+  const map = L.map('tracking-map', {zoomControl: true}).fitBounds(searchBounds.pad(0.2));
+  const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+  let tileFailures = 0;
+  tiles.on('tileerror', () => {
+    tileFailures += 1;
+    if (tileFailures >= 3) document.getElementById('tile-warning').style.display = 'block';
+  });
 
-                // Ensure it's a Polygon
-                if (geometry.type === "Polygon") {
-                    const coordinates = geometry.coordinates[0];
+  const homeIcon = L.divIcon({className: '', html: '<div class="home-pin"></div>', iconSize: [26, 26], iconAnchor: [13, 25]});
+  const cornerIcon = label => L.divIcon({className: '', html: `<div class="corner-pin"><b>${label}</b></div>`, iconSize: [22, 22], iconAnchor: [11, 11]});
+  const homeMarker = L.marker(home, {icon: homeIcon, draggable: true, zIndexOffset: 1000}).addTo(map).bindTooltip('Home', {permanent: false});
+  const nwMarker = L.marker([north, west], {icon: cornerIcon('NW'), draggable: true}).addTo(map);
+  const seMarker = L.marker([south, east], {icon: cornerIcon('SE'), draggable: true}).addTo(map);
+  const rectangle = L.rectangle(searchBounds, {color: '#ff6b6b', weight: 2, fillColor: '#42d9ff', fillOpacity: 0.12}).addTo(map);
 
-                    // We are assuming the coordinates are ordered: top-left, bottom-right, etc.
-                    const topLeft = coordinates[0]; // First point in Polygon
-                    const bottomRight = coordinates[2]; // Third point in Polygon
+  function roundCoord(value) { return Number(value).toFixed(6); }
+  function setInput(id, value) { document.getElementById(id).value = roundCoord(value); }
+  function setHome(latlng) {
+    homeMarker.setLatLng(latlng);
+    setInput('latitude', latlng.lat);
+    setInput('longitude', latlng.lng);
+  }
+  function updateArea() {
+    const a = nwMarker.getLatLng();
+    const b = seMarker.getLatLng();
+    const n = Math.max(a.lat, b.lat), s = Math.min(a.lat, b.lat);
+    const w = Math.min(a.lng, b.lng), e = Math.max(a.lng, b.lng);
+    searchBounds = L.latLngBounds([s, w], [n, e]);
+    rectangle.setBounds(searchBounds);
+    setInput('tl_y', n); setInput('tl_x', w); setInput('br_y', s); setInput('br_x', e);
+    const middleLat = (n + s) / 2 * Math.PI / 180;
+    const heightNm = Math.abs(n - s) * 60;
+    const widthNm = Math.abs(e - w) * 60 * Math.cos(middleLat);
+    const summary = `${widthNm.toFixed(1)} × ${heightNm.toFixed(1)} nm`;
+    document.getElementById('area-size').textContent = summary;
+    document.getElementById('area-size-field').value = summary;
+  }
+  function setBox(radiusNm) {
+    const point = homeMarker.getLatLng();
+    const latDelta = radiusNm / 60;
+    const lonDelta = radiusNm / (60 * Math.max(0.15, Math.cos(point.lat * Math.PI / 180)));
+    nwMarker.setLatLng([point.lat + latDelta, point.lng - lonDelta]);
+    seMarker.setLatLng([point.lat - latDelta, point.lng + lonDelta]);
+    updateArea();
+    map.fitBounds(searchBounds.pad(0.2));
+  }
 
-                    // Assign the extracted values to the boundary box fields
-                    document.getElementById('tl_y').value = topLeft[1]; // Top-Left Latitude
-                    document.getElementById('tl_x').value = topLeft[0]; // Top-Left Longitude
-                    document.getElementById('br_y').value = bottomRight[1]; // Bottom-Right Latitude
-                    document.getElementById('br_x').value = bottomRight[0]; // Bottom-Right Longitude
-                } else {
-                    alert('The GeoJSON provided is not a Polygon. Please ensure you select a rectangular area.');
-                }
-            } catch (error) {
-                alert('Invalid GeoJSON format! Please ensure you pasted the entire GeoJSON and that it contains only a rectangular polygon.');
-                console.error(error);
-            }
-        }
-    </script>
+  homeMarker.on('drag', event => setHome(event.target.getLatLng()));
+  nwMarker.on('drag', updateArea);
+  seMarker.on('drag', updateArea);
+  map.on('click', event => setHome(event.latlng));
+  document.getElementById('fit-area').addEventListener('click', () => map.fitBounds(searchBounds.pad(0.2)));
+  document.querySelectorAll('[data-radius]').forEach(button => button.addEventListener('click', () => setBox(Number(button.dataset.radius))));
+  document.getElementById('latitude').addEventListener('change', () => setHome([Number(document.getElementById('latitude').value), Number(document.getElementById('longitude').value)]));
+  document.getElementById('longitude').addEventListener('change', () => setHome([Number(document.getElementById('latitude').value), Number(document.getElementById('longitude').value)]));
+  ['tl_y', 'tl_x', 'br_y', 'br_x'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+    nwMarker.setLatLng([Number(document.getElementById('tl_y').value), Number(document.getElementById('tl_x').value)]);
+    seMarker.setLatLng([Number(document.getElementById('br_y').value), Number(document.getElementById('br_x').value)]);
+    updateArea();
+  }));
+  updateArea();
 
-    <script>
-    function toggleMinGS(isNone) {
-        const slider = document.getElementById('min_groundspeed');
-        const val = document.getElementById('min_gs_val');
-        slider.disabled = isNone;
-        if (isNone) { val.innerText = 'None'; }
-        else { val.innerText = slider.value; }
-    }
-    function toggleMaxGS(isNone) {
-        const slider = document.getElementById('max_groundspeed');
-        const val = document.getElementById('max_gs_val');
-        slider.disabled = isNone;
-        if (isNone) { val.innerText = 'None'; }
-        else { val.innerText = slider.value; }
-    }
-    </script>
+  function bindRange(sliderId, outputId, suffix = '') {
+    const slider = document.getElementById(sliderId);
+    const output = document.getElementById(outputId);
+    slider.addEventListener('input', () => output.textContent = `${slider.value}${suffix}`);
+  }
+  bindRange('brightness', 'brightness-value', '%');
+  bindRange('min_groundspeed', 'min_gs_val');
+  bindRange('max_groundspeed', 'max_gs_val');
+  function bindNone(checkId, sliderId, outputId) {
+    const check = document.getElementById(checkId);
+    const slider = document.getElementById(sliderId);
+    const output = document.getElementById(outputId);
+    check.addEventListener('change', () => {
+      slider.disabled = check.checked;
+      output.textContent = check.checked ? 'None' : slider.value;
+    });
+  }
+  bindNone('min_gs_none', 'min_groundspeed', 'min_gs_val');
+  bindNone('max_gs_none', 'max_groundspeed', 'max_gs_val');
+</script>
 </body>
 </html>

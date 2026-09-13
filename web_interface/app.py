@@ -1,5 +1,4 @@
 from flask import Flask, request, render_template
-from geopy.geocoders import Nominatim
 import pytz
 import os
 import json
@@ -94,13 +93,6 @@ def update_location(latitude, longitude, altitude):
             lines[i + 3] = f"    {altitude},  # Altitude (kilometers)\n"
             break
 
-    # Reverse geocode to get the city name and update the weather location
-    city_name = get_city_name(latitude, longitude)
-    for i, line in enumerate(lines):
-        if "WEATHER_LOCATION" in line:
-            lines[i] = f'WEATHER_LOCATION = "{city_name}"\n'
-            break
-
     # Write updates back to the config file
     with open(CONFIG_FILE_PATH, 'w') as file:
         file.writelines(lines)
@@ -109,17 +101,25 @@ def update_location(latitude, longitude, altitude):
     os.system('sudo systemctl restart itsaplane.service')
 
 
-# Function to reverse geocode and get the city name from coordinates
-def get_city_name(latitude, longitude):
-    geolocator = Nominatim(user_agent="your-app")
-    location = geolocator.reverse(f"{latitude}, {longitude}")
-    if location:
-        address = location.raw['address']
-        # Try getting city, town, village, or hamlet
-        city_name = address.get('city') or address.get('town') or address.get('village') or address.get('hamlet')
-        if city_name:
-            return city_name
-    return "Unknown City"
+def update_map_settings(latitude, longitude, altitude, tl_y, tl_x, br_y, br_x):
+    """Update the home point and search box together, then restart once."""
+    with open(CONFIG_FILE_PATH, 'r') as file:
+        lines = file.readlines()
+
+    for i, line in enumerate(lines):
+        if "ZONE_HOME" in line:
+            lines[i + 1] = f'    "tl_y": {tl_y},  # Top-Left Latitude (deg)\n'
+            lines[i + 2] = f'    "tl_x": {tl_x},  # Top-Left Longitude (deg)\n'
+            lines[i + 3] = f'    "br_y": {br_y},  # Bottom-Right Latitude (deg)\n'
+            lines[i + 4] = f'    "br_x": {br_x},  # Bottom-Right Longitude (deg)\n'
+        elif "LOCATION_HOME" in line:
+            lines[i + 1] = f"    {latitude},  # Latitude (deg)\n"
+            lines[i + 2] = f"    {longitude},  # Longitude (deg)\n"
+            lines[i + 3] = f"    {altitude},  # Altitude (kilometers)\n"
+
+    with open(CONFIG_FILE_PATH, 'w') as file:
+        file.writelines(lines)
+    return restart_service("itsaplane.service")
 
 # Update the weather location manually
 def update_weather_location(city_name):
@@ -363,7 +363,7 @@ def set_time_format_24h(flag: bool):
 def index():
     current_location = get_current_location()
     brightness = get_brightness()
-    city_name = get_city_name(current_location[0], current_location[1])
+    city_name = get_current_weather_location()
     zone_home = get_zone_home()
     journey_code = get_journey_code()
     min_altitude, max_altitude = get_altitudes()
@@ -372,8 +372,7 @@ def index():
     current_timezone = get_timezone()
     temperature_units = get_temperature_units()
     time_format_24h = get_time_format_24h()
-
-
+    map_saved = False
 
     if request.method == 'POST':
         # 🔹 FIRST: handle plane fields (so nothing else catches the POST)
@@ -381,13 +380,35 @@ def index():
             fields = request.form.getlist('plane_fields')
             write_plane_detail_fields(fields)
 
+        elif 'map_settings_form' in request.form:
+            latitude = float(request.form['latitude'])
+            longitude = float(request.form['longitude'])
+            altitude = float(request.form['altitude']) * 0.0003048
+            zone_latitudes = [float(request.form['tl_y']), float(request.form['br_y'])]
+            zone_longitudes = [float(request.form['tl_x']), float(request.form['br_x'])]
+            zone_home = {
+                'tl_y': max(zone_latitudes),
+                'tl_x': min(zone_longitudes),
+                'br_y': min(zone_latitudes),
+                'br_x': max(zone_longitudes),
+            }
+            update_map_settings(
+                latitude,
+                longitude,
+                altitude,
+                zone_home['tl_y'],
+                zone_home['tl_x'],
+                zone_home['br_y'],
+                zone_home['br_x'],
+            )
+            current_location = [latitude, longitude, altitude]
+            map_saved = True
+
         elif 'latitude' in request.form and 'longitude' in request.form and 'altitude' in request.form:
             latitude = request.form['latitude']
             longitude = request.form['longitude']
             altitude = float(request.form['altitude']) * 0.0003048  # feet -> km
             update_location(latitude, longitude, altitude)
-            city_name = get_city_name(latitude, longitude)
-            update_weather_location(city_name)
             current_location = [latitude, longitude, altitude]
 
         elif 'tl_y' in request.form and 'tl_x' in request.form and 'br_y' in request.form and 'br_x' in request.form:
@@ -455,6 +476,7 @@ def index():
         selected_plane_fields=selected_plane_fields,   # ✅ pass to template
         min_groundspeed=min_groundspeed,
         max_groundspeed=max_groundspeed,
+        map_saved=map_saved,
     )
 
 if __name__ == '__main__':

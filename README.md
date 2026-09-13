@@ -14,6 +14,14 @@ The display makes one ADSB.lol request every 15 seconds. No FlightRadar24
 account, paid plan, or API key is required. `ZONE_HOME`, `LOCATION_HOME`, and
 the altitude/speed filters in `config.py` control which aircraft appear.
 
+## Configuration page
+
+Open `http://<raspberry-pi-address>:5000` from the same network as the Pi. The
+page includes an interactive map: click or drag the blue home pin and drag the
+red corner handles to define the aircraft search area. Leaflet is bundled with
+the application, so the page does not depend on a JavaScript CDN or an external
+GeoJSON editor. The optional background map uses standard OpenStreetMap tiles.
+
 [Blog article about this project](https://blog.colinwaddell.com/flight-tracker/)
 
 [![Finished flight tracker showing a flight](https://blog.colinwaddell.com/media/flight-tracker/screen-flight-thumb.jpg)](https://blog.colinwaddell.com/media/flight-tracker/screen-flight.jpg)

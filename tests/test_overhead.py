@@ -15,16 +15,17 @@ SEATTLE_ZONE = {
 
 
 class FakeResponse:
-    def __init__(self, payload, status_code=200):
+    def __init__(self, payload, status_code=200, headers=None):
         self._payload = payload
         self.status_code = status_code
+        self.headers = headers or {}
 
     def json(self):
         return self._payload
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise requests.HTTPError(f"HTTP {self.status_code}")
+            raise requests.HTTPError(f"HTTP {self.status_code}", response=self)
 
 
 class OverheadTests(unittest.TestCase):
@@ -42,6 +43,21 @@ class OverheadTests(unittest.TestCase):
         geometry = overhead._zone_geometry(SEATTLE_ZONE)
         home = overhead._home_position(geometry, [47.6, 122.4, 0])
         self.assertEqual(home, (geometry[4], geometry[5]))
+
+    def test_rate_limit_sets_retry_delay_and_keeps_last_good_data(self):
+        session = Mock()
+        session.headers = {}
+        session.get.return_value = FakeResponse(
+            {}, status_code=429, headers={"Retry-After": "120"}
+        )
+        tracker = overhead.Overhead(session=session)
+        tracker._data = [{"callsign": "KEEP"}]
+        tracker._grab_data()
+        self.assertEqual(tracker.data, [{"callsign": "KEEP"}])
+        self.assertFalse(tracker.new_data)
+        self.assertGreaterEqual(tracker._next_fetch_at - overhead.monotonic(), 119)
+        tracker.grab_data()
+        self.assertEqual(session.get.call_count, 1)
 
     def test_live_data_is_filtered_sorted_and_mapped_for_scenes(self):
         live_payload = {

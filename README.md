@@ -10,7 +10,8 @@ This fork uses two free, keyless services:
   airlines, and origin/destination airport codes. Lookups are cached for six
   hours to avoid unnecessary requests.
 
-The display makes one ADSB.lol request every 15 seconds. No FlightRadar24
+The display checks for new aircraft about every 30 seconds and backs off when
+ADSB.lol rate-limits requests. No FlightRadar24
 account, paid plan, or API key is required. `ZONE_HOME`, `LOCATION_HOME`, and
 the altitude/speed filters in `config.py` control which aircraft appear.
 

@@ -126,10 +126,13 @@ class Display(
             # callsigns, regardless or order
             data_is_different = not callsigns_match(self._data, new_data)
 
+            # Refresh telemetry even when the same aircraft are still present.
+            # Callsigns only decide whether the scene needs to restart.
+            self._data = new_data
+
             if data_is_different:
                 self._data_index = 0
                 self._data_all_looped = False
-                self._data = new_data
 
             # Only reset if there's flight data already
             # on the screen, of if there's some new
@@ -147,19 +150,9 @@ class Display(
 
     @Animator.KeyFrame.add(frames.PER_SECOND * 15)
     def grab_new_data(self, count):
-        # Only grab data if we're not already searching
-        # for planes, or if there's new data available
-        # which hasn't been displayed.
-        #
-        # We also need wait until all previously grabbed
-        # data has been looped through the display.
-        #
-        # Last, if our internal store of the data
-        # is empty, try and grab data
-        if not (self.overhead.processing and self.overhead.new_data) and (
-            self._data_all_looped or len(self._data) <= 1
-        ):
-            self.overhead.grab_data()
+        # Keep the live feed current even while details for multiple aircraft
+        # are scrolling. Overhead.grab_data() skips overlapping requests.
+        self.overhead.grab_data()
 
     def run(self):
         try:

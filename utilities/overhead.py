@@ -37,6 +37,9 @@ except (ModuleNotFoundError, NameError, ImportError):
 LIVE_API_URL = "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"
 DETAIL_API_URL = "https://api.adsbdb.com/v0/aircraft/{icao}"
 REQUEST_TIMEOUT = 10
+MIN_FETCH_INTERVAL = 30
+RATE_LIMIT_BACKOFF = 60
+MAX_RATE_LIMIT_BACKOFF = 15 * 60
 MAX_FLIGHT_LOOKUP = 5
 DETAIL_CACHE_SECONDS = 6 * 60 * 60
 EARTH_RADIUS_KM = 6371.0
@@ -145,17 +148,37 @@ class Overhead:
         self._data = []
         self._new_data = False
         self._processing = False
+        self._next_fetch_at = 0
+        self._rate_limit_failures = 0
         self._detail_cache = {}
         self._zone = _zone_geometry(ZONE_HOME)
         self._home = _home_position(self._zone, LOCATION_HOME)
 
     def grab_data(self):
         with self._lock:
-            if self._processing:
+            now = monotonic()
+            if self._processing or now < self._next_fetch_at:
                 return
             self._new_data = False
             self._processing = True
+            self._next_fetch_at = now + MIN_FETCH_INTERVAL
         Thread(target=self._grab_data, daemon=True).start()
+
+    def _back_off_after_rate_limit(self, response):
+        self._rate_limit_failures += 1
+        delay = min(
+            MAX_RATE_LIMIT_BACKOFF,
+            RATE_LIMIT_BACKOFF * 2 ** (self._rate_limit_failures - 1),
+        )
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                delay = max(delay, int(retry_after))
+            except ValueError:
+                pass
+        with self._lock:
+            self._next_fetch_at = max(self._next_fetch_at, monotonic() + delay)
+        logging.warning("ADSB.lol rate limited; retrying in at least %s seconds", delay)
 
     def _fetch_live_aircraft(self):
         *_, center_lat, center_lon, radius_nm = self._zone
@@ -262,6 +285,13 @@ class Overhead:
                 details = self._fetch_details(live)
                 data.append(self._display_record(live, details))
             succeeded = True
+            self._rate_limit_failures = 0
+        except requests.HTTPError as error:
+            response = error.response
+            if response is not None and response.status_code == 429:
+                self._back_off_after_rate_limit(response)
+            else:
+                logging.exception("Aircraft refresh failed: %s", error)
         except (requests.RequestException, ValueError, KeyError, TypeError) as error:
             logging.exception("Aircraft refresh failed: %s", error)
         finally:
